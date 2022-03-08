@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" type="text/css" href="https://kentico.github.io/kontent-custom-element-samples/shared/custom-element.css">
+    <link rel="stylesheet" href="https://cdn.scaleflex.it/plugins/js-cloudimage-responsive/4.8.4/js-cloudimage-responsive.min.css?vh=a076ef&func=proxy"></link>
+    <style>
+      .container {
+        display: flex;
+        align-items: center;
+        flex-direction: column;
+        gap: 10px;
+        border: 1px solid black;
+        width: 99%;
+        min-height: 500px;
+      }
+      input {
+        padding-top: 10px;
+        width: 80%;
+      }
+      #output {
+        width: 80%;
+        margin-top: 10px;
+        margin-bottom: 10px;
+      }
+      .img-wrap {
+        border: 1px solid black;
+        margin-top: 10px;
+        margin-bottom: 10px;
+      }
+      #output .img-wrap img {
+        width: 100%;
+      }
+      .caption {
+        padding: 10px;
+      }
+      .caption .close {
+        padding: 10px;
+        cursor: pointer;
+        font-weight: bold;
+        color: red;
+      }
+      .caption .name {
+        font-weight: bold;
+        font-size: large;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="container">
+      <input type="file" multiple accept="image/*" onchange="upload(event)">
+      <div id="output"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.3.1/dist/jquery.min.js"></script>
+    <script src="https://app.kontent.ai/js-api/custom-element/v1/custom-element.min.js"></script>
+
+    <script>
+      var ciToken = null;
+      var ciBaseUrl = null;
+      var ciLazy = false;
+      var projId = null;
+      var langId = null;
+      var mgmtApiKey = null;
+      var displays = [];
+      var output = $("#output");
+      var input = $(".container input");
+      var isDisabled = false;
+
+      var upload = async function(event) 
+      {
+        var images = event.target.files;
+
+        if (images && images.length) 
+        {
+          for (let i = 0; i < images.length; i++)
+          {
+            var raw  = images[i];
+            var name = images[i].name;
+            var type = images[i].type;
+            var size = images[i].size;
+
+            var myHeaders = new Headers();
+            myHeaders.append("Content-length", size);
+            myHeaders.append("Content-Type", type);
+            myHeaders.append("Authorization", `Bearer ${mgmtApiKey}`);
+
+            var requestOptions = {
+              method: 'POST',
+              headers: myHeaders,
+              body: raw,
+              redirect: 'follow'
+            };
+            var ref = await apiCall(`https://manage.kontent.ai/v2/projects/${projId}/files/${name}`, requestOptions);
+
+            var myHeaders = new Headers();
+            myHeaders.append("Content-Type", "application/json");
+            myHeaders.append("Authorization", `Bearer ${mgmtApiKey}`);
+
+            var raw = JSON.stringify({
+              "file_reference": ref,
+              "descriptions": [
+                {
+                  "language": {
+                    "id": langId
+                  },
+                  "description": ""
+                }
+              ],
+              "title": name
+            });
+            var requestOptions = {
+              method: 'POST',
+              headers: myHeaders,
+              body: raw,
+              redirect: 'follow'
+            };
+            var asset = await apiCall(`https://manage.kontent.ai/v2/projects/${projId}/assets`, requestOptions);
+
+            displays.push({url: asset.url, name: name, id: asset.id});
+          }
+        }
+
+        render(displays);
+        CustomElement.setValue(JSON.stringify(displays));
+        window.location.reload();
+      };
+      async function apiCall(url, requestOptions) 
+      {
+        let response = await fetch(url, requestOptions);
+        let data = await response.json();
+
+        return data;
+      }
+      function render(images) 
+      {
+        if (images && images.length) 
+        {
+          for (let i = 0; i < images.length; i++)
+          {
+            var caption = isDisabled ? '<p class="caption"><span class="name">'+images[i].name+'</span></p>' : '<p class="caption"><span class="close" onclick="remove(event)">X</span><span class="name">'+images[i].name+'</span></p>';
+
+            output.append($(
+              '<div class="img-wrap" data-id="'+images[i].id+'">' +
+                caption +
+                '<img src="'+images[i].url+'" ci-ratio="1.5" />' +
+              '</div>'
+            ));
+          }
+        }
+      }
+      var remove = function(event) 
+      {
+        var id = $(event.target).closest('.img-wrap').attr('data-id');
+        var images = displays || [];
+        displays = images.filter((image) => image.id !== id);
+        output.empty();
+        render(displays); 
+        CustomElement.setValue(JSON.stringify(displays));
+      }
+
+      function setupOutput(value) 
+      {      
+        if (value) 
+        {
+          displays = JSON.parse(value);
+          render(displays);
+        } 
+        else 
+        {
+          render(null);
+        }
+      }
+
+      function initCustomElement() 
+      {
+        try 
+        {
+          CustomElement.init((element, _context) => {
+            config = element.config || {};
+            ciToken = config.token;
+            ciBaseUrl = config.baseURL;
+            ciLazy = config.lazyLoading;
+            projId = _context.projectId;
+            langId = _context.variant.id;
+            mgmtApiKey = config.mgmtApiKey;
+            isDisabled = element.disabled;
+
+            setupOutput(element.value);
+
+            if (isDisabled) 
+            {
+              input.hide();
+            } 
+            else 
+            {
+              input.show();
+            }
+
+            CustomElement.setHeight( Math.ceil($("html").height()) );
+          });
+        } 
+        catch (err) 
+        {
+          console.error(err);
+        }
+      }
+
+      initCustomElement();
+    </script>
+
+    <script>
+      window.lazySizesConfig = window.lazySizesConfig || {};
+      window.lazySizesConfig.init = false;
+    </script>
+    <script src="https://cdn.scaleflex.it/filerobot/js-cloudimage-responsive/lazysizes.min.js"></script>
+    <script src="https://cdn.scaleflex.it/plugins/js-cloudimage-responsive/4.8.4/js-cloudimage-responsive.min.js"></script>
+    <script>
+      output.ready(function() {
+
+        if (isDisabled)
+        {
+          $( "#output img" ).each(function( index ) {
+            $(this).attr('ci-src', $(this).attr('src'));
+          });
+
+          const ciResponsive = new window.CIResponsive({
+            token: ciToken,
+            baseURL: ciBaseUrl, 
+            lazyLoading: ciLazy
+          });
+      
+          window.lazySizes.init();
+        }
+      });
+    </script>
+  </body>
+
+</html>
